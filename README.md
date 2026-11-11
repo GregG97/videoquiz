@@ -17,7 +17,8 @@ Application web en un seul fichier HTML qui génère un quiz interactif à parti
 
 ## Limites connues
 
-- **Clé API** : l'application appelle `https://api.anthropic.com/v1/messages` sans clé. Elle fonctionne telle quelle dans un artefact Claude.ai ; ailleurs (GitHub Pages, ouverture locale), il faut passer par un petit serveur intermédiaire qui ajoute la clé — ne jamais mettre de clé API dans ce fichier public.
+- **Clé API** : l'application passe par un serveur intermédiaire Cloudflare Worker (`worker/worker.js`) qui ajoute la clé côté serveur — aucune clé n'est présente dans ce dépôt. Adresse du Worker à renseigner dans `PROXY_URL` (`index.html`).
+- **Limite d'usage** : 10 quiz par jour et par visiteur (30 appels au total, corrections comprises). Au-delà : « Limite atteinte, revenez demain ».
 - **Vidéos peu connues ou récentes** : si la vidéo n'est pas indexée par la recherche web, la génération échoue (« pas assez d'informations »). Solution de contournement : copier la transcription YouTube (« Afficher la transcription ») et la fournir à Claude.
 
 ## Fichiers
