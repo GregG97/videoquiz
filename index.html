@@ -1,0 +1,581 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Quiz Vidéo — génère un quiz depuis n'importe quelle vidéo YouTube</title>
+<style>
+  @font-face { font-family: 'system-serif'; src: local('Georgia'); }
+  :root {
+    --bg: #10161d;
+    --bg-alt: #171f28;
+    --card: #1d2731;
+    --card-hi: #232f3b;
+    --text: #eef2f5;
+    --muted: #8b98a5;
+    --accent: #ffb545;
+    --accent-dark: #e69a2c;
+    --accent-2: #5ee6c0;
+    --bad: #ff6f6f;
+    --bad-bg: rgba(255,111,111,0.12);
+    --good-bg: rgba(94,230,192,0.12);
+    --border: #2a3542;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    background: radial-gradient(120% 140% at 15% -10%, #1a2531 0%, var(--bg) 55%);
+    color: var(--text);
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    line-height: 1.55;
+    padding: 36px 16px 90px;
+  }
+  .wrap { max-width: 660px; margin: 0 auto; }
+
+  /* ---- Filmstrip step rail (signature element) ---- */
+  .reel {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    margin-bottom: 32px;
+    background: var(--bg-alt);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 10px 14px;
+    overflow-x: auto;
+  }
+  .reel-step {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+    color: var(--muted);
+    font-size: 0.78rem;
+    font-family: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+    letter-spacing: 0.02em;
+    padding: 4px 10px;
+  }
+  .reel-step .hole {
+    width: 9px; height: 9px; border-radius: 50%;
+    border: 1.5px solid var(--muted);
+    flex-shrink: 0;
+  }
+  .reel-step.active { color: var(--accent); }
+  .reel-step.active .hole { background: var(--accent); border-color: var(--accent); }
+  .reel-step.done { color: var(--accent-2); }
+  .reel-step.done .hole { background: var(--accent-2); border-color: var(--accent-2); }
+  .reel-sep { color: var(--border); font-size: 0.75rem; padding: 0 2px; }
+
+  h1 {
+    font-family: Georgia, 'Times New Roman', serif;
+    font-weight: 600;
+    font-size: 1.7rem;
+    letter-spacing: -0.01em;
+    margin: 0 0 6px;
+  }
+  h1 span { color: var(--accent); }
+  .subtitle { color: var(--muted); font-size: 0.96rem; margin: 0 0 30px; }
+
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 26px 24px;
+  }
+
+  label.field-label {
+    display: block; font-size: 0.82rem; color: var(--muted);
+    text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 8px;
+  }
+  input[type="text"], input[type="url"] {
+    width: 100%; padding: 13px 14px; border-radius: 9px;
+    border: 1px solid var(--border); background: var(--bg-alt); color: var(--text);
+    font-size: 0.98rem; font-family: inherit;
+  }
+  input[type="text"]:focus, input[type="url"]:focus, .choice-pill:focus-visible, textarea:focus {
+    outline: 2px solid var(--accent); outline-offset: 1px;
+  }
+  .field { margin-bottom: 22px; }
+  .hint { color: var(--muted); font-size: 0.8rem; margin-top: 6px; }
+
+  .pill-row { display: flex; gap: 8px; flex-wrap: wrap; }
+  .choice-pill {
+    background: var(--bg-alt); border: 1px solid var(--border); color: var(--text);
+    padding: 10px 16px; border-radius: 999px; cursor: pointer; font-size: 0.9rem;
+    font-family: inherit;
+  }
+  .choice-pill:hover { border-color: var(--accent); }
+  .choice-pill.selected { background: var(--accent); border-color: var(--accent); color: #1a1305; font-weight: 700; }
+
+  .mode-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  @media (max-width: 480px) { .mode-cards { grid-template-columns: 1fr; } }
+  .mode-card {
+    background: var(--bg-alt); border: 1.5px solid var(--border); border-radius: 12px;
+    padding: 16px; cursor: pointer; text-align: left; font-family: inherit; color: var(--text);
+  }
+  .mode-card h3 { margin: 0 0 4px; font-size: 0.98rem; }
+  .mode-card p { margin: 0; font-size: 0.8rem; color: var(--muted); }
+  .mode-card.selected { border-color: var(--accent); background: var(--card-hi); }
+
+  #choices-sub { display: none; margin-top: 16px; }
+
+  button.primary {
+    width: 100%; margin-top: 8px;
+    background: var(--accent); color: #1a1305; border: none;
+    font-weight: 700; font-size: 1rem; padding: 14px; border-radius: 10px;
+    cursor: pointer; font-family: inherit;
+  }
+  button.primary:hover { background: var(--accent-dark); }
+  button.primary:disabled { opacity: 0.5; cursor: not-allowed; }
+  button.secondary {
+    background: transparent; color: var(--muted); border: 1px solid var(--border);
+    font-size: 0.88rem; padding: 10px 18px; border-radius: 9px; cursor: pointer; font-family: inherit;
+  }
+  button.secondary:hover { color: var(--text); border-color: var(--text); }
+
+  /* Loading */
+  .loading-wrap { text-align: center; padding: 50px 20px; }
+  .spool {
+    width: 54px; height: 54px; margin: 0 auto 22px; border-radius: 50%;
+    border: 3px solid var(--border); border-top-color: var(--accent);
+    animation: spin 0.9s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .loading-msg { color: var(--muted); font-size: 0.9rem; }
+
+  /* Error */
+  .error-box { border-left: 3px solid var(--bad); background: var(--bad-bg); padding: 16px 18px; border-radius: 8px; margin-bottom: 18px; font-size: 0.92rem; }
+
+  /* Quiz */
+  #quiz-title { font-family: Georgia, serif; font-size: 1.35rem; margin: 0 0 4px; }
+  #quiz-sub { color: var(--muted); font-size: 0.88rem; margin: 0 0 24px; }
+  .question {
+    background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+    padding: 20px 22px; margin-bottom: 14px;
+  }
+  .q-title { font-weight: 600; margin-bottom: 12px; font-size: 1rem; }
+  .q-number {
+    display: inline-block; color: var(--accent);
+    font-family: 'IBM Plex Mono', ui-monospace, monospace; margin-right: 8px; font-size: 0.9rem;
+  }
+  .choice {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 12px; border-radius: 8px; cursor: pointer; border: 1px solid transparent;
+  }
+  .choice:hover { background: var(--bg-alt); }
+  .choice input { accent-color: var(--accent); width: 16px; height: 16px; flex-shrink: 0; }
+  .choice label { cursor: pointer; flex: 1; }
+  .question.correct { border-color: var(--accent-2); background: var(--good-bg); }
+  .question.incorrect { border-color: var(--bad); background: var(--bad-bg); }
+  .choice.mark-correct { background: rgba(94,230,192,0.18); font-weight: 600; }
+  .choice.mark-wrong { background: rgba(255,111,111,0.18); text-decoration: line-through; opacity: 0.85; }
+  .explain {
+    margin-top: 10px; font-size: 0.87rem; padding-top: 10px;
+    border-top: 1px dashed var(--border); display: none;
+  }
+  .question.checked .explain { display: block; }
+  .explain.good { color: var(--accent-2); }
+  .explain.bad { color: var(--bad); }
+  textarea {
+    width: 100%; min-height: 64px; padding: 12px 14px; border-radius: 9px;
+    border: 1px solid var(--border); background: var(--bg-alt); color: var(--text);
+    font-size: 0.95rem; font-family: inherit; resize: vertical;
+  }
+
+  .actions { position: sticky; bottom: 16px; display: flex; justify-content: center; gap: 12px; margin-top: 24px; }
+  #score-banner {
+    display: none; margin: 0 auto 20px; padding: 16px 20px; border-radius: 12px;
+    font-weight: 700; font-size: 1.02rem; text-align: center; font-family: 'IBM Plex Mono', monospace;
+  }
+  #score-banner.show { display: block; }
+  #score-banner.great { background: var(--good-bg); color: var(--accent-2); }
+  #score-banner.mid { background: rgba(255,181,69,0.14); color: var(--accent); }
+  #score-banner.low { background: var(--bad-bg); color: var(--bad); }
+
+  .screen { display: none; }
+  .screen.active { display: block; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="reel" id="reel">
+    <div class="reel-step" data-step="setup"><span class="hole"></span>Lien</div>
+    <span class="reel-sep">·</span>
+    <div class="reel-step" data-step="format"><span class="hole"></span>Format</div>
+    <span class="reel-sep">·</span>
+    <div class="reel-step" data-step="loading"><span class="hole"></span>Génération</div>
+    <span class="reel-sep">·</span>
+    <div class="reel-step" data-step="quiz"><span class="hole"></span>Quiz</div>
+  </div>
+
+  <h1>Quiz<span>·</span>Vidéo</h1>
+  <p class="subtitle">Colle le lien d'une vidéo YouTube, choisis un format, et obtiens un quiz sur son contenu.</p>
+
+  <!-- SETUP SCREEN -->
+  <div class="screen active" id="screen-setup">
+    <div class="card">
+      <div class="field">
+        <label class="field-label" for="yt-url">Lien de la vidéo YouTube</label>
+        <input type="url" id="yt-url" placeholder="https://www.youtube.com/watch?v=...">
+        <div class="hint" id="url-hint"></div>
+      </div>
+
+      <div class="field">
+        <label class="field-label">Format du quiz</label>
+        <div class="mode-cards">
+          <button type="button" class="mode-card selected" id="mode-qcm" data-mode="qcm">
+            <h3>QCM</h3>
+            <p>Choix multiples, correction instantanée.</p>
+          </button>
+          <button type="button" class="mode-card" id="mode-free" data-mode="free">
+            <h3>Réponse libre</h3>
+            <p>Texte libre, orthographe non pénalisée.</p>
+          </button>
+        </div>
+
+        <div id="choices-sub">
+          <div class="hint" style="margin-bottom:8px; margin-top:0;">Nombre de choix par question</div>
+          <div class="pill-row" id="choices-row">
+            <button type="button" class="choice-pill" data-n="3">3</button>
+            <button type="button" class="choice-pill selected" data-n="4">4</button>
+            <button type="button" class="choice-pill" data-n="5">5</button>
+          </div>
+        </div>
+      </div>
+
+      <button class="primary" id="generate-btn">Générer le quiz</button>
+    </div>
+  </div>
+
+  <!-- LOADING SCREEN -->
+  <div class="screen" id="screen-loading">
+    <div class="card loading-wrap">
+      <div class="spool"></div>
+      <div class="loading-msg" id="loading-msg">Recherche d'informations sur la vidéo…</div>
+    </div>
+  </div>
+
+  <!-- ERROR SCREEN -->
+  <div class="screen" id="screen-error">
+    <div class="card">
+      <div class="error-box" id="error-text"></div>
+      <button class="secondary" id="retry-btn">Réessayer</button>
+    </div>
+  </div>
+
+  <!-- QUIZ SCREEN -->
+  <div class="screen" id="screen-quiz">
+    <div id="quiz-title"></div>
+    <div id="quiz-sub"></div>
+    <div id="score-banner"></div>
+    <div id="quiz-body"></div>
+    <div class="actions">
+      <button class="primary" id="check-btn" style="width:auto; padding:14px 30px;">Vérifier mes réponses</button>
+      <button class="secondary" id="new-quiz-btn">Nouveau quiz</button>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  // ---------- State ----------
+  let mode = 'qcm';
+  let numChoices = 4;
+  let currentQuiz = null; // { title, questions: [...] }
+
+  const screens = ['setup', 'loading', 'error', 'quiz'];
+  function showScreen(name) {
+    screens.forEach(s => document.getElementById('screen-' + s).classList.toggle('active', s === name));
+    document.querySelectorAll('.reel-step').forEach(el => {
+      const step = el.dataset.step;
+      el.classList.remove('active', 'done');
+      const order = ['setup', 'format', 'loading', 'quiz'];
+      const target = name === 'error' ? 'setup' : name;
+      const ti = order.indexOf(target === 'setup' ? 'setup' : target);
+      const si = order.indexOf(step);
+      if (si < ti || (target === 'quiz' && step !== 'quiz')) el.classList.add('done');
+      else if (si === ti) el.classList.add('active');
+    });
+  }
+
+  // ---------- Setup interactions ----------
+  document.getElementById('mode-qcm').addEventListener('click', () => setMode('qcm'));
+  document.getElementById('mode-free').addEventListener('click', () => setMode('free'));
+  function setMode(m) {
+    mode = m;
+    document.getElementById('mode-qcm').classList.toggle('selected', m === 'qcm');
+    document.getElementById('mode-free').classList.toggle('selected', m === 'free');
+    document.getElementById('choices-sub').style.display = m === 'qcm' ? 'block' : 'none';
+  }
+
+  document.querySelectorAll('#choices-row .choice-pill').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('#choices-row .choice-pill').forEach(b => b.classList.remove('selected'));
+      btn.classList.add('selected');
+      numChoices = parseInt(btn.dataset.n, 10);
+    });
+  });
+
+  function extractVideoId(url) {
+    try {
+      const u = new URL(url.trim());
+      if (u.hostname.includes('youtu.be')) return u.pathname.replace('/', '').split('?')[0];
+      if (u.searchParams.get('v')) return u.searchParams.get('v');
+      const m = u.pathname.match(/\/(shorts|embed)\/([^/?]+)/);
+      if (m) return m[2];
+      return null;
+    } catch (e) { return null; }
+  }
+
+  document.getElementById('yt-url').addEventListener('input', (e) => {
+    const id = extractVideoId(e.target.value);
+    document.getElementById('url-hint').textContent = e.target.value.trim()
+      ? (id ? 'Vidéo détectée : ' + id : 'Lien non reconnu — vérifie qu\'il s\'agit bien d\'un lien YouTube.')
+      : '';
+  });
+
+  document.getElementById('generate-btn').addEventListener('click', generateQuiz);
+  document.getElementById('retry-btn').addEventListener('click', generateQuiz);
+  document.getElementById('new-quiz-btn').addEventListener('click', () => {
+    currentQuiz = null;
+    showScreen('setup');
+  });
+
+  // ---------- Claude API helper ----------
+  async function callClaude(system, userText, maxTokens, useSearch) {
+    const body = {
+      model: 'claude-sonnet-4-6',
+      max_tokens: maxTokens || 1000,
+      system: system,
+      messages: [{ role: 'user', content: userText }]
+    };
+    if (useSearch) {
+      body.tools = [{ type: 'web_search_20250305', name: 'web_search' }];
+    }
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    if (!response.ok) throw new Error('Erreur API (' + response.status + ')');
+    const data = await response.json();
+    const text = (data.content || [])
+      .filter(b => b.type === 'text')
+      .map(b => b.text)
+      .join('\n');
+    return text;
+  }
+
+  function extractJSON(text) {
+    let t = text.trim();
+    t = t.replace(/```json/gi, '').replace(/```/g, '').trim();
+    const start = t.indexOf('{');
+    const end = t.lastIndexOf('}');
+    if (start === -1 || end === -1) throw new Error('Réponse invalide');
+    return JSON.parse(t.slice(start, end + 1));
+  }
+
+  // ---------- Generation ----------
+  async function generateQuiz() {
+    const url = document.getElementById('yt-url').value.trim();
+    const videoId = extractVideoId(url);
+    if (!videoId) {
+      showError("Ce lien ne ressemble pas à un lien YouTube valide. Colle l'URL complète de la vidéo (ex : https://www.youtube.com/watch?v=...).");
+      return;
+    }
+
+    showScreen('loading');
+    document.getElementById('loading-msg').textContent = 'Recherche d\'informations sur la vidéo…';
+
+    const system = "Tu es un générateur de quiz francophone. Utilise l'outil de recherche web pour trouver des informations fiables et précises sur LA vidéo YouTube précise indiquée (titre exact, chaîne, sujet, faits marquants, éventuellement transcription ou résumé). Base le quiz UNIQUEMENT sur des faits que tu as pu vérifier pour cette vidéo précise, jamais sur des suppositions générales liées au sujet. Réponds STRICTEMENT avec un objet JSON valide, sans texte avant ni après, sans balises markdown. Si tu ne parviens pas à trouver assez d'informations fiables sur cette vidéo précise, réponds exactement avec {\"error\": \"introuvable\"}. Reste concis : chaque question et chaque explication doit tenir en une phrase courte.";
+
+    let userText;
+    if (mode === 'qcm') {
+      userText = 'Vidéo à traiter : ' + url + ' (identifiant : ' + videoId + ').\n' +
+        'Génère un QCM de 5 questions en français sur le contenu réel de cette vidéo. ' +
+        'Chaque question doit avoir exactement ' + numChoices + ' choix de réponse, un seul correct, ' +
+        'et une explication d\'une phrase courte justifiant la bonne réponse. ' +
+        'Réponds avec ce format JSON exact, sans rien d\'autre :\n' +
+        '{"title": "titre de la vidéo", "questions": [{"q": "...", "choices": ["...","...","..."], "answer": 0, "explain": "..."}]}\n' +
+        'Le champ "answer" est l\'index (à partir de 0) du choix correct.';
+    } else {
+      userText = 'Vidéo à traiter : ' + url + ' (identifiant : ' + videoId + ').\n' +
+        'Génère 5 questions en français à réponse libre et courte (une phrase maximum) sur le contenu réel de cette vidéo. ' +
+        'Pour chaque question, fournis une réponse de référence concise et une explication d\'une phrase courte. ' +
+        'Réponds avec ce format JSON exact, sans rien d\'autre :\n' +
+        '{"title": "titre de la vidéo", "questions": [{"q": "...", "answer": "réponse de référence courte", "explain": "..."}]}';
+    }
+
+    try {
+      document.getElementById('loading-msg').textContent = 'Rédaction des questions…';
+      const raw = await callClaude(system, userText, 1000, true);
+      const data = extractJSON(raw);
+      if (data.error || !data.questions || !data.questions.length) {
+        showError("Je n'ai pas trouvé assez d'informations fiables sur cette vidéo précise pour générer un quiz. Essaie une autre vidéo, idéalement une vidéo publique avec des sous-titres ou une description détaillée.");
+        return;
+      }
+      currentQuiz = data;
+      renderQuiz();
+      showScreen('quiz');
+    } catch (err) {
+      showError("La génération a échoué (" + err.message + "). Vérifie ta connexion et réessaie.");
+    }
+  }
+
+  function showError(msg) {
+    document.getElementById('error-text').textContent = msg;
+    showScreen('error');
+  }
+
+  // ---------- Render quiz ----------
+  function renderQuiz() {
+    document.getElementById('quiz-title').textContent = currentQuiz.title || 'Quiz';
+    document.getElementById('quiz-sub').textContent = mode === 'qcm'
+      ? 'QCM · ' + numChoices + ' choix par question — choisis une réponse, puis vérifie.'
+      : 'Réponse libre — l\'orthographe n\'est pas prise en compte, seul le sens compte.';
+    document.getElementById('score-banner').className = '';
+    document.getElementById('score-banner').textContent = '';
+
+    const body = document.getElementById('quiz-body');
+    body.innerHTML = '';
+    const checkBtn = document.getElementById('check-btn');
+    checkBtn.textContent = mode === 'qcm' ? 'Vérifier mes réponses' : 'Corriger mes réponses';
+    checkBtn.disabled = false;
+
+    currentQuiz.questions.forEach((item, qi) => {
+      const qDiv = document.createElement('div');
+      qDiv.className = 'question';
+      qDiv.id = 'q' + qi;
+
+      const title = document.createElement('div');
+      title.className = 'q-title';
+      title.innerHTML = '<span class="q-number">Q' + (qi + 1) + '</span>' + escapeHTML(item.q);
+      qDiv.appendChild(title);
+
+      if (mode === 'qcm') {
+        item.choices.forEach((choiceText, ci) => {
+          const choiceDiv = document.createElement('div');
+          choiceDiv.className = 'choice';
+          choiceDiv.id = 'q' + qi + 'c' + ci;
+          const input = document.createElement('input');
+          input.type = 'radio'; input.name = 'q' + qi; input.value = ci; input.id = 'q' + qi + 'i' + ci;
+          const label = document.createElement('label');
+          label.htmlFor = input.id; label.textContent = choiceText;
+          choiceDiv.appendChild(input); choiceDiv.appendChild(label);
+          qDiv.appendChild(choiceDiv);
+        });
+      } else {
+        const ta = document.createElement('textarea');
+        ta.id = 'q' + qi + 'answer';
+        ta.placeholder = 'Ta réponse…';
+        qDiv.appendChild(ta);
+      }
+
+      const explain = document.createElement('div');
+      explain.className = 'explain';
+      explain.id = 'explain' + qi;
+      qDiv.appendChild(explain);
+
+      body.appendChild(qDiv);
+    });
+  }
+
+  function escapeHTML(s) {
+    return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+
+  document.getElementById('check-btn').addEventListener('click', () => {
+    if (mode === 'qcm') checkQCM(); else gradeFreeText();
+  });
+
+  function checkQCM() {
+    let score = 0;
+    currentQuiz.questions.forEach((item, qi) => {
+      const qDiv = document.getElementById('q' + qi);
+      const selected = document.querySelector('input[name="q' + qi + '"]:checked');
+      const explainEl = document.getElementById('explain' + qi);
+      item.choices.forEach((_, ci) => document.getElementById('q' + qi + 'c' + ci).classList.remove('mark-correct', 'mark-wrong'));
+      qDiv.classList.add('checked');
+      document.getElementById('q' + qi + 'c' + item.answer).classList.add('mark-correct');
+      if (selected) {
+        const selectedVal = parseInt(selected.value, 10);
+        if (selectedVal === item.answer) {
+          score++;
+          qDiv.classList.remove('incorrect'); qDiv.classList.add('correct');
+          explainEl.className = 'explain good';
+          explainEl.textContent = '✓ Bonne réponse — ' + item.explain;
+        } else {
+          document.getElementById('q' + qi + 'c' + selectedVal).classList.add('mark-wrong');
+          qDiv.classList.remove('correct'); qDiv.classList.add('incorrect');
+          explainEl.className = 'explain bad';
+          explainEl.textContent = '✗ Pas tout à fait — ' + item.explain;
+        }
+      } else {
+        qDiv.classList.remove('correct'); qDiv.classList.add('incorrect');
+        explainEl.className = 'explain bad';
+        explainEl.textContent = '✗ Pas de réponse sélectionnée — ' + item.explain;
+      }
+    });
+    showScoreBanner(score, currentQuiz.questions.length);
+  }
+
+  async function gradeFreeText() {
+    const checkBtn = document.getElementById('check-btn');
+    checkBtn.disabled = true;
+    checkBtn.textContent = 'Correction en cours…';
+
+    const pairs = currentQuiz.questions.map((item, qi) => ({
+      q: item.q,
+      refAnswer: item.answer,
+      userAnswer: (document.getElementById('q' + qi + 'answer').value || '').trim()
+    }));
+
+    const system = "Tu es un correcteur bienveillant et tolérant. Pour chaque question, compare la réponse de l'utilisateur à la réponse de référence en te concentrant UNIQUEMENT sur le sens et l'exactitude factuelle. IGNORE totalement les fautes d'orthographe, d'accents, de grammaire et de conjugaison, ainsi que les différences de formulation. Une réponse vide ou hors sujet est incorrecte. Réponds STRICTEMENT avec un objet JSON valide, sans texte avant ni après : {\"results\": [{\"correct\": true, \"feedback\": \"courte phrase en français\"}]} — un objet par question, dans le même ordre.";
+    const userText = 'Voici les paires question / réponse de référence / réponse de l\'utilisateur :\n' + JSON.stringify(pairs, null, 0);
+
+    try {
+      const raw = await callClaude(system, userText, 1000, false);
+      const data = extractJSON(raw);
+      let score = 0;
+      currentQuiz.questions.forEach((item, qi) => {
+        const qDiv = document.getElementById('q' + qi);
+        const explainEl = document.getElementById('explain' + qi);
+        const result = (data.results && data.results[qi]) || { correct: false, feedback: item.explain };
+        qDiv.classList.add('checked');
+        if (result.correct) {
+          score++;
+          qDiv.classList.remove('incorrect'); qDiv.classList.add('correct');
+          explainEl.className = 'explain good';
+          explainEl.textContent = '✓ ' + (result.feedback || 'Bonne réponse.');
+        } else {
+          qDiv.classList.remove('correct'); qDiv.classList.add('incorrect');
+          explainEl.className = 'explain bad';
+          explainEl.textContent = '✗ ' + (result.feedback || item.explain);
+        }
+      });
+      showScoreBanner(score, currentQuiz.questions.length);
+    } catch (err) {
+      showError("La correction a échoué (" + err.message + "). Réessaie.");
+    } finally {
+      checkBtn.disabled = false;
+      checkBtn.textContent = 'Corriger mes réponses';
+    }
+  }
+
+  function showScoreBanner(score, total) {
+    const banner = document.getElementById('score-banner');
+    banner.classList.add('show');
+    banner.textContent = 'Score : ' + score + ' / ' + total;
+    banner.classList.remove('great', 'mid', 'low');
+    if (score >= total * 0.8) banner.classList.add('great');
+    else if (score >= total * 0.5) banner.classList.add('mid');
+    else banner.classList.add('low');
+    banner.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  showScreen('setup');
+</script>
+</body>
+</html>
